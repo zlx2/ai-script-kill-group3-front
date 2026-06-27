@@ -19,7 +19,18 @@ const events = ref<any[]>([])
 const userId = parseInt(localStorage.getItem('userId') || '0')
 const myRole = computed(() => players.value.find(p => p.userId === userId))
 
-const ws = useWebSocket()
+const ws = useWebSocket({
+  onEvent(msg) {
+    const roomEvents = [
+      'player_join', 'player_leave', 'player_ready',
+      'room_update', 'game_start', 'stage_change',
+      'role_selected', 'GAME_STARTED', 'PHASE_CHANGED'
+    ]
+    if (roomEvents.includes(msg.type)) {
+      loadRoom()
+    }
+  }
+})
 
 onMounted(async () => {
   ws.connect(roomId)
@@ -33,6 +44,15 @@ watch(() => gameStore.events.length, () => { events.value = [...gameStore.events
 const currentPhase = computed(() => room.value?.currentStage || 'waiting')
 const isHost = computed(() => room.value?.hostId === userId)
 const isReady = computed(() => myRole.value?.isReady ?? false)
+
+// 进入选角色阶段时自动加载角色列表
+watch(currentPhase, async (phase) => {
+  if (phase === 'select_role' && roles.value.length === 0) {
+    try {
+      roles.value = await getAvailableRoles(roomId)
+    } catch (_) { /* ignore */ }
+  }
+})
 
 async function loadRoom() {
   try {
@@ -61,6 +81,13 @@ async function doSelectRole(roleId: number) {
   } catch (e: any) { alert(e.message) }
 }
 
+async function doStart() {
+  try {
+    await sendCommand(roomId, 'START_GAME', {})
+    await loadRoom()
+  } catch (e: any) { alert(e.message) }
+}
+
 async function doAdvance() {
   try {
     await sendCommand(roomId, 'ADVANCE_PHASE', {})
@@ -84,19 +111,10 @@ async function doSearchClue(clueId: number) {
 async function doLeave() {
   try {
     await leaveRoom(roomId)
-  } catch (e: any) { /* ignore */ }
+  } catch (_) { /* ignore */ }
   ws.disconnect()
   gameStore.reset()
   router.push('/lobby')
-}
-
-// 选角色按钮加载
-async function loadRoles() {
-  try {
-    roles.value = await getAvailableRoles(roomId)
-  } catch (e: any) {
-    console.warn(e)
-  }
 }
 
 function phaseLabel(): string {
@@ -141,23 +159,23 @@ function phaseLabel(): string {
       </div>
       <div class="actions">
         <button class="btn btn-primary" @click="doReady">{{ isReady ? '取消准备' : '准备' }}</button>
-        <button v-if="isHost" class="btn btn-start" @click="doAdvance">开始游戏</button>
+        <button v-if="isHost" class="btn btn-start" @click="doStart">开始游戏</button>
       </div>
     </div>
 
     <!-- 选择角色 -->
     <div v-if="currentPhase === 'select_role'" class="phase-select-role">
       <h3>选择你的角色</h3>
-      <div class="role-grid">
+      <div class="role-grid" v-if="roles.length > 0">
         <div v-for="r in roles" :key="r.roleId" class="role-card" @click="doSelectRole(r.roleId)">
           <div class="role-name">{{ r.roleName }}</div>
           <div class="role-desc">{{ r.description || '' }}</div>
         </div>
       </div>
-      <button v-if="roles.length === 0" class="btn" @click="loadRoles">加载可选角色</button>
+      <p v-else class="hint">加载角色中...</p>
     </div>
 
-    <!-- 游戏阶段通用 -->
+    <!-- 游戏阶段 -->
     <div v-if="!['waiting', 'select_role'].includes(currentPhase)" class="phase-game">
       <div class="players-row">
         <div v-for="p in players" :key="p.userId" class="player-tag" :class="{ active: p.roleId }">

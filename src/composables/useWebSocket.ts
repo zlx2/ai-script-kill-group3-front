@@ -2,7 +2,11 @@ import { ref, onUnmounted } from 'vue'
 import { gameStore } from '../stores/gameStore'
 import { syncRoom } from '../api'
 
-export function useWebSocket() {
+export type WsOptions = {
+  onEvent?: (msg: any) => void
+}
+
+export function useWebSocket(options: WsOptions = {}) {
   const ws = ref<WebSocket | null>(null)
   const connected = ref(false)
   let manualClose = false
@@ -23,7 +27,10 @@ export function useWebSocket() {
 
     socket.onopen = () => {
       connected.value = true
-      doSync(roomId)
+      // 只有房间连接才 sync，lobby 不需要
+      if (roomId !== 'lobby') {
+        doSync(roomId)
+      }
     }
 
     socket.onmessage = (e) => {
@@ -42,6 +49,9 @@ export function useWebSocket() {
             serverTime: msg.data.serverTime
           })
         }
+
+        // 调用外部回调，让页面刷新数据
+        options.onEvent?.(msg)
       } catch (err) {
         console.warn('WS parse error', err)
       }

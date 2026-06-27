@@ -6,9 +6,16 @@ import { useWebSocket } from '../composables/useWebSocket'
 
 const router = useRouter()
 const rooms = ref<any[]>([])
-const ws = useWebSocket()
 
-// 大厅连接
+const ws = useWebSocket({
+  onEvent(msg) {
+    const lobbyEvents = ['new_room', 'room_update', 'room_dismiss', 'player_join', 'player_leave', 'player_ready']
+    if (lobbyEvents.includes(msg.type)) {
+      loadRooms()
+    }
+  }
+})
+
 onMounted(async () => {
   ws.connect('lobby')
   await loadRooms()
@@ -38,7 +45,7 @@ async function doCreate() {
   }
 }
 
-// 加入房间
+// 加入房间弹窗
 const showJoin = ref(false)
 const joinNo = ref('')
 const joinPwd = ref('')
@@ -55,14 +62,13 @@ async function doJoin() {
 
 async function enterRoom(room: any) {
   if (room.roomStatus !== 0) return
-  if (room.roomStatus === 2) return
-  
+
   if (room.hasPassword) {
     joinNo.value = room.roomNo
     showJoin.value = true
     return
   }
-  
+
   try {
     const roomId = await joinRoom(room.roomNo, '')
     ws.disconnect()
@@ -84,7 +90,6 @@ async function enterRoom(room: any) {
       </div>
     </header>
 
-    <!-- 房间列表 -->
     <div class="room-list">
       <div v-for="room in rooms" :key="room.roomId" class="room-card" @click="enterRoom(room)">
         <div class="room-info">
@@ -101,7 +106,6 @@ async function enterRoom(room: any) {
       <div v-if="rooms.length === 0" class="empty">暂无房间，创建或加入一个吧~</div>
     </div>
 
-    <!-- 创建房间弹窗 -->
     <div v-if="showCreate" class="modal-overlay" @click.self="showCreate = false">
       <div class="modal">
         <h2>创建房间</h2>
@@ -114,7 +118,6 @@ async function enterRoom(room: any) {
       </div>
     </div>
 
-    <!-- 加入房间弹窗 -->
     <div v-if="showJoin" class="modal-overlay" @click.self="showJoin = false">
       <div class="modal">
         <h2>加入房间</h2>

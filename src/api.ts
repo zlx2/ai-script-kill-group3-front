@@ -42,6 +42,14 @@ export async function login(account: string, password: string): Promise<LoginRes
   return request<LoginResult>('POST', '/auth/login', { username: account, password })
 }
 
+export async function sendCode(email: string): Promise<void> {
+  await request<any>('POST', '/auth/code', { email })
+}
+
+export async function register(payload: { username: string; password: string; email: string; code: string }): Promise<void> {
+  await request<any>('POST', '/auth/register', payload)
+}
+
 // ============ 房间相关 ============
 export async function getRoomList(): Promise<any[]> {
   return request<any[]>('GET', '/api/room/list')
