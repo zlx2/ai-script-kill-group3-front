@@ -13,9 +13,9 @@ async function doLogin() {
   try {
     error.value = ''
     const data = await login(account.value, password.value)
-    localStorage.setItem('token', data.token)
-    localStorage.setItem('userId', String(data.userinfo.id))
-    gameStore.setUser(data.userinfo)
+    localStorage.setItem('token', data.refreshToken)
+    localStorage.setItem('userId', String(data.userId))
+    gameStore.setUser(data)
     router.push('/lobby')
   } catch (e: any) {
     error.value = e.message || '登录失败'

@@ -13,7 +13,7 @@ function getUserId(): number | null {
 async function request<T>(method: string, url: string, body?: any): Promise<T> {
   const headers: Record<string, string> = {}
   const token = getToken()
-  if (token) headers['Authorization'] = token
+  if (token) headers['refreshToken'] = token
   const userId = getUserId()
   if (userId) headers['userId'] = String(userId)
   if (body) headers['Content-Type'] = 'application/json'
@@ -30,7 +30,7 @@ async function request<T>(method: string, url: string, body?: any): Promise<T> {
 
 // ============ 用户相关 ============
 export async function login(account: string, password: string): Promise<{ token: string; userinfo: any }> {
-  return request<any>('POST', '/api/auth/login', { account, password })
+  return request<any>('POST', '/auth/login', { username: account, password })
 }
 
 // ============ 房间相关 ============

@@ -26,7 +26,7 @@ async function loadRooms() {
 const showCreate = ref(false)
 const roomName = ref('')
 const password = ref('')
-const scriptId = ref(1)
+const scriptId = ref(2)
 
 async function doCreate() {
   try {
