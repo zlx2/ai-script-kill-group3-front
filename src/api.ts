@@ -28,9 +28,18 @@ async function request<T>(method: string, url: string, body?: any): Promise<T> {
   return json.data as T
 }
 
+// ============ 类型 ============
+export interface LoginResult {
+  userId: number
+  username: string
+  nickname?: string
+  avatar?: string
+  refreshToken: string
+}
+
 // ============ 用户相关 ============
-export async function login(account: string, password: string): Promise<{ token: string; userinfo: any }> {
-  return request<any>('POST', '/auth/login', { username: account, password })
+export async function login(account: string, password: string): Promise<LoginResult> {
+  return request<LoginResult>('POST', '/auth/login', { username: account, password })
 }
 
 // ============ 房间相关 ============
@@ -54,10 +63,6 @@ export async function readyRoom(roomId: string): Promise<void> {
   await request<any>('POST', `/api/room/ready?roomId=${roomId}`)
 }
 
-export async function startGame(roomId: string): Promise<void> {
-  await request<any>('POST', `/api/room/start?roomId=${roomId}`)
-}
-
 export async function getRoomDetail(roomId: string): Promise<any> {
   return request<any>('GET', `/api/room/${roomId}`)
 }
@@ -72,11 +77,7 @@ export async function selectRole(roomId: string, roleId: number): Promise<void> 
 
 // ============ 游戏命令 ============
 export async function sendCommand(roomId: string, type: string, payload?: any): Promise<void> {
-  await request<any>('POST', '/api/game/command', {
-    roomId,
-    type,
-    payload: payload || {}
-  })
+  await request<any>('POST', '/api/game/command', { roomId, type, payload: payload || {} })
 }
 
 // ============ 同步 ============

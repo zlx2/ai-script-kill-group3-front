@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { getRoomList, createRoom, joinRoom, startGame, readyRoom, getRoomDetail, getAvailableRoles, selectRole, sendCommand } from '../api'
+import { getRoomList, createRoom, joinRoom } from '../api'
 import { useWebSocket } from '../composables/useWebSocket'
 
 const router = useRouter()
@@ -53,10 +53,23 @@ async function doJoin() {
   }
 }
 
-function enterRoom(room: any) {
+async function enterRoom(room: any) {
+  if (room.roomStatus !== 0) return
   if (room.roomStatus === 2) return
-  ws.disconnect()
-  router.push(`/room/${room.roomId}`)
+  
+  if (room.hasPassword) {
+    joinNo.value = room.roomNo
+    showJoin.value = true
+    return
+  }
+  
+  try {
+    const roomId = await joinRoom(room.roomNo, '')
+    ws.disconnect()
+    router.push(`/room/${roomId}`)
+  } catch (e: any) {
+    alert(e.message || '加入房间失败')
+  }
 }
 </script>
 

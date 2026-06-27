@@ -5,10 +5,12 @@ import { syncRoom } from '../api'
 export function useWebSocket() {
   const ws = ref<WebSocket | null>(null)
   const connected = ref(false)
+  let manualClose = false
 
   function connect(roomId: string) {
     const userId = localStorage.getItem('userId')
     if (!userId) return
+    manualClose = false
 
     // 关旧连接
     if (ws.value) {
@@ -21,7 +23,6 @@ export function useWebSocket() {
 
     socket.onopen = () => {
       connected.value = true
-      // 连接后拉同步
       doSync(roomId)
     }
 
@@ -31,7 +32,6 @@ export function useWebSocket() {
         if (msg.type === 'pong') return
         if (msg.type === 'sync_state') return
 
-        // 存入事件列表
         if (msg.data) {
           gameStore.addEvent({
             eventId: msg.data.eventId || Date.now(),
@@ -42,9 +42,6 @@ export function useWebSocket() {
             serverTime: msg.data.serverTime
           })
         }
-
-        // 特定事件触发页面刷新
-        handleEvent(msg)
       } catch (err) {
         console.warn('WS parse error', err)
       }
@@ -52,26 +49,19 @@ export function useWebSocket() {
 
     socket.onclose = () => {
       connected.value = false
-      // 自动重连
-      setTimeout(() => connect(roomId), 3000)
+      if (!manualClose) {
+        setTimeout(() => connect(roomId), 3000)
+      }
     }
 
     ws.value = socket
   }
 
-  function handleEvent(msg: any) {
-    // 页面硬刷新由具体组件监听 store.events 实现
-  }
-
   async function doSync(roomId: string) {
     try {
       const data = await syncRoom(roomId, gameStore.lastEventId || undefined)
-      if (data.roomState) {
-        gameStore.setRoom(data.roomState)
-      }
-      if (data.players) {
-        gameStore.setPlayers(data.players)
-      }
+      if (data.roomState) gameStore.setRoom(data.roomState)
+      if (data.players) gameStore.setPlayers(data.players)
       if (data.missedEvents) {
         for (const ev of data.missedEvents) {
           gameStore.addEvent(ev)
@@ -83,6 +73,7 @@ export function useWebSocket() {
   }
 
   function disconnect() {
+    manualClose = true
     if (ws.value) {
       ws.value.close()
       ws.value = null

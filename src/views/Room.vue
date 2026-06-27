@@ -1,7 +1,10 @@
 <script setup lang="ts">
-import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { getRoomDetail, getAvailableRoles, selectRole, startGame, readyRoom, sendCommand, syncRoom } from '../api'
+import {
+  getRoomDetail, getAvailableRoles, selectRole,
+  readyRoom, leaveRoom, sendCommand
+} from '../api'
 import { useWebSocket } from '../composables/useWebSocket'
 import { gameStore } from '../stores/gameStore'
 
@@ -9,7 +12,6 @@ const route = useRoute()
 const router = useRouter()
 const roomId = route.params.id as string
 
-// 状态
 const room = ref<any>(null)
 const players = ref<any[]>([])
 const roles = ref<any[]>([])
@@ -19,23 +21,14 @@ const myRole = computed(() => players.value.find(p => p.userId === userId))
 
 const ws = useWebSocket()
 
-// 连接 WebSocket
 onMounted(async () => {
   ws.connect(roomId)
   await loadRoom()
 })
 
-watch(() => gameStore.roomPlayers, (val) => {
-  players.value = val
-}, { immediate: true })
-
-watch(() => gameStore.currentRoom, (val) => {
-  if (val) room.value = val
-}, { immediate: true })
-
-watch(() => gameStore.events.length, () => {
-  events.value = [...gameStore.events]
-})
+watch(() => gameStore.roomPlayers, (val) => { players.value = val }, { immediate: true })
+watch(() => gameStore.currentRoom, (val) => { if (val) room.value = val }, { immediate: true })
+watch(() => gameStore.events.length, () => { events.value = [...gameStore.events] })
 
 const currentPhase = computed(() => room.value?.currentStage || 'waiting')
 const isHost = computed(() => room.value?.hostId === userId)
@@ -57,13 +50,6 @@ async function loadRoom() {
 async function doReady() {
   try {
     await readyRoom(roomId)
-    await loadRoom()
-  } catch (e: any) { alert(e.message) }
-}
-
-async function doStart() {
-  try {
-    await startGame(roomId)
     await loadRoom()
   } catch (e: any) { alert(e.message) }
 }
@@ -95,11 +81,22 @@ async function doSearchClue(clueId: number) {
   } catch (e: any) { alert(e.message) }
 }
 
-// 离开
 async function doLeave() {
+  try {
+    await leaveRoom(roomId)
+  } catch (e: any) { /* ignore */ }
   ws.disconnect()
   gameStore.reset()
   router.push('/lobby')
+}
+
+// 选角色按钮加载
+async function loadRoles() {
+  try {
+    roles.value = await getAvailableRoles(roomId)
+  } catch (e: any) {
+    console.warn(e)
+  }
 }
 
 function phaseLabel(): string {
@@ -120,7 +117,6 @@ function phaseLabel(): string {
 
 <template>
   <div class="page room-page">
-    <!-- 顶栏 -->
     <header>
       <div class="header-left">
         <h2>{{ room?.roomName || '房间' }}</h2>
@@ -132,10 +128,9 @@ function phaseLabel(): string {
       </div>
     </header>
 
-    <!-- 房间号 -->
     <div class="room-no" v-if="room">房间号：<strong>{{ room.roomNo }}</strong></div>
 
-    <!-- ============ 等待阶段 ============ -->
+    <!-- 等待阶段 -->
     <div v-if="currentPhase === 'waiting'" class="phase-waiting">
       <div class="player-grid">
         <div v-for="p in players" :key="p.userId" class="player-card" :class="{ host: p.isHost, ready: p.isReady }">
@@ -146,11 +141,11 @@ function phaseLabel(): string {
       </div>
       <div class="actions">
         <button class="btn btn-primary" @click="doReady">{{ isReady ? '取消准备' : '准备' }}</button>
-        <button v-if="isHost" class="btn btn-start" @click="doStart">开始游戏</button>
+        <button v-if="isHost" class="btn btn-start" @click="doAdvance">开始游戏</button>
       </div>
     </div>
 
-    <!-- ============ 选择角色 ============ -->
+    <!-- 选择角色 -->
     <div v-if="currentPhase === 'select_role'" class="phase-select-role">
       <h3>选择你的角色</h3>
       <div class="role-grid">
@@ -159,37 +154,27 @@ function phaseLabel(): string {
           <div class="role-desc">{{ r.description || '' }}</div>
         </div>
       </div>
-      <button v-if="roles.length === 0" class="btn" @click="loadRoom(); (async () => { roles.value = await getAvailableRoles(roomId) })()">加载可选角色</button>
+      <button v-if="roles.length === 0" class="btn" @click="loadRoles">加载可选角色</button>
     </div>
 
-    <!-- ============ 游戏阶段通用 ============ -->
+    <!-- 游戏阶段通用 -->
     <div v-if="!['waiting', 'select_role'].includes(currentPhase)" class="phase-game">
-      <!-- 玩家列表 -->
       <div class="players-row">
         <div v-for="p in players" :key="p.userId" class="player-tag" :class="{ active: p.roleId }">
           {{ p.nickname }} {{ p.roleName ? '(' + p.roleName + ')' : '' }}
         </div>
       </div>
 
-      <!-- 阶段操作 -->
       <div class="phase-content">
-        <!-- 讨论阶段 -->
         <div v-if="currentPhase.startsWith('discussion')" class="phase-chat">
-          <p class="hint">💬 讨论阶段，和其他玩家交流吧</p>
-          <div class="chat-box">
-            <div v-for="ev in events.filter(e => e.type === 'CHAT_SENT').slice(-20)" :key="ev.eventId" class="chat-msg">
-              <strong>{{ ev.userId }}:</strong> {{ ev.payload?.content || '' }}
-            </div>
-          </div>
+          <p class="hint">💬 讨论阶段</p>
         </div>
 
-        <!-- 搜证阶段 -->
         <div v-if="currentPhase === 'searching'" class="phase-search">
-          <p class="hint">🔍 搜证阶段，点击线索进行搜证</p>
+          <p class="hint">🔍 搜证阶段</p>
           <button class="btn" @click="doSearchClue(1)">搜证</button>
         </div>
 
-        <!-- 投票阶段 -->
         <div v-if="currentPhase === 'voting'" class="phase-vote">
           <p class="hint">🗳️ 投票阶段，选择你怀疑的人</p>
           <div class="vote-grid">
@@ -200,19 +185,16 @@ function phaseLabel(): string {
           </div>
         </div>
 
-        <!-- 复盘/结束 -->
         <div v-if="currentPhase === 'review' || currentPhase === 'finished'" class="phase-review">
-          <p class="hint">📝 游戏结束，查看复盘</p>
+          <p class="hint">📝 游戏结束</p>
         </div>
       </div>
 
-      <!-- 房主推进按钮 -->
       <div class="actions" v-if="isHost && !['review', 'finished'].includes(currentPhase)">
         <button class="btn btn-primary" @click="doAdvance">推进到下一阶段</button>
       </div>
     </div>
 
-    <!-- 事件日志 -->
     <div class="event-log">
       <div v-for="ev in events.slice(-10)" :key="ev.eventId" class="event-item">
         [{{ ev.type }}] {{ ev.payload ? JSON.stringify(ev.payload).slice(0, 60) : '' }}
@@ -240,7 +222,6 @@ header { display: flex; justify-content: space-between; align-items: center; mar
 .btn-leave { background: #555; }
 .actions { display: flex; gap: 8px; margin-top: 16px; justify-content: center; }
 
-/* 玩家网格 */
 .player-grid, .role-grid, .vote-grid { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
 .player-card, .role-card, .vote-card {
   background: #16213e; border-radius: 12px; padding: 16px;
@@ -258,23 +239,12 @@ header { display: flex; justify-content: space-between; align-items: center; mar
 .status { font-size: 12px; color: #888; margin-top: 4px; }
 .role-desc { font-size: 11px; color: #666; margin-top: 4px; }
 
-/* 玩家标签 */
 .players-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
-.player-tag {
-  padding: 4px 12px; background: #16213e; border-radius: 16px; font-size: 13px;
-}
+.player-tag { padding: 4px 12px; background: #16213e; border-radius: 16px; font-size: 13px; }
 .player-tag.active { border: 1px solid #e94560; }
-
-/* 聊天 */
-.chat-box {
-  background: #111; border-radius: 12px; padding: 12px; height: 200px; overflow-y: auto;
-  margin-top: 8px;
-}
-.chat-msg { margin-bottom: 6px; font-size: 14px; }
 
 .hint { color: #888; font-size: 14px; text-align: center; margin: 20px 0; }
 
-/* 事件日志 */
 .event-log {
   margin-top: 16px; padding: 8px; background: #111; border-radius: 8px;
   max-height: 150px; overflow-y: auto; font-size: 11px; color: #666;
